@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused)]
+use core::fmt;
 use std::{
     borrow::{Borrow, BorrowMut},
-    cell::RefCell,
+    cell::RefCell, fmt::{Display, Formatter}, error::Error,
 };
 
 #[derive(Debug)]
@@ -28,6 +29,12 @@ pub struct Tree<T> {
     empties: Vec<usize>,
     uid: u64,
     dcb: Option<DCB<T>>,
+}
+
+impl<T> Display for Tree<T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 #[derive(Debug)]
