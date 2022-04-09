@@ -16,6 +16,12 @@ pub enum TreeError {
     CantRemoveNodeWithChildren,
 }
 
+impl Display for TreeError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
 pub enum DumpCallbackType {
     Head,
     Node(usize, Option<usize>),
