@@ -16,6 +16,12 @@ pub enum TreeError {
     CantRemoveNodeWithChildren,
 }
 
+impl Error for TreeError{
+    fn source(&self) -> Option<&(dyn Error + 'static)>{
+        Some(self)
+    }
+}
+
 impl Display for TreeError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self)
@@ -36,12 +42,12 @@ pub struct Tree<T> {
     uid: u64,
     dcb: Option<DCB<T>>,
 }
-
+/* 
 impl<T> Display for Tree<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self)
     }
-}
+}*/
 
 #[derive(Debug)]
 struct NodeRef<T> {
