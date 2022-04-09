@@ -360,12 +360,70 @@ where
     }
 
     /// Get node by index.
+    ///  This method return a reference of undelcared type.
+    ///  To retrieve node info use get_node_info instead.
+    pub fn get_node_mut(&mut self, index_in_tree: usize) -> Result<&mut T, TreeError> {
+        if index_in_tree >= self.elements.len() {
+            return Err(TreeError::IndexOutOfBounds);
+        }
+        if let Some(node) = self.elements[index_in_tree].as_mut() {
+            return Ok(&mut node.get_mut().value);
+        } else {
+            return Err(TreeError::NodeDoesNotExist);
+        }
+    }
+
+    /// Get node extendend indexing info.
+    ///  This method returns touple of (index_in_tree, index_in_parent, parent_index_in_tree)
+    pub fn get_node_info(
+        &self,
+        index_in_tree: usize,
+    ) -> Result<(usize, Option<usize>, Option<usize>), TreeError> {
+        if index_in_tree >= self.elements.len() {
+            return Err(TreeError::IndexOutOfBounds);
+        }
+        if let Some(node) = self.elements[index_in_tree].as_ref() {
+            return Ok((
+                node.borrow().index_in_tree,
+                node.borrow().index_in_parent,
+                node.borrow().parent_index_in_tree,
+            ));
+        } else {
+            return Err(TreeError::NodeDoesNotExist);
+        }
+    }
+
+    /// Get node by index.
     ///  Index = 0 means root
     pub fn get_node<F, H>(&self, index: usize, mut f: F) -> Result<H, TreeError>
     where
         F: FnMut(&mut T, Option<usize>) -> Result<H, TreeError>,
     {
         self.get_node_ref(index, |node| f(&mut node.value, node.parent_index_in_tree))
+    }
+
+    /// Iterate on children and
+    ///  pass index_in_tree, index_in_parent to callback
+    pub fn foreach_children<F>(&self, index_in_tree: usize, mut f: F) -> Result<(), TreeError>
+    where
+        F: FnMut(&mut T, usize, usize),
+    {
+        if index_in_tree >= self.elements.len() {
+            return Err(TreeError::IndexOutOfBounds);
+        }
+
+        if let Some(node) = self.elements[index_in_tree].as_ref() {
+            let mut node = node.borrow_mut();
+            if let Some(children) = node.children.as_mut() {
+                for (index_in_parent, index_in_tree) in children.iter().enumerate() {
+                    let mut node = self.elements[*index_in_tree].as_ref().unwrap().borrow_mut();
+                    f(&mut node.value, *index_in_tree, index_in_parent);
+                }
+            }
+            Ok(())
+        } else {
+            return Err(TreeError::NodeDoesNotExist);
+        }
     }
 
     pub fn dump_callback(&mut self, f: impl Fn(DumpCallbackType, Option<&T>) -> String + 'static) {
@@ -393,7 +451,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use assert2::check;
+    use assert2::{check, let_assert};
     use rand::Rng;
 
     use super::*;
@@ -433,6 +491,24 @@ mod tests {
     }
 
     #[test]
+    fn get_node() {
+        let mut tree: Tree<Node> = Tree::new();
+        let rootidx = tree.add_node(TreeNodeType::Root, || Node { value: 1 });
+        check!(let Ok(_) = rootidx);
+        check!(tree.capacity() == 1);
+        check!(rootidx.unwrap() == 0);
+        check!(tree.len() == 1);
+        check!(tree.get_node_mut(0).unwrap().value == 1);
+
+        tree.get_node_mut(0).unwrap().value = 3;
+
+        check!(tree.get_node_mut(0).unwrap().value == 3);
+
+        tree.dump_structure();
+        //
+    }
+
+    #[test]
     fn manipulate_node() {
         let mut tree: Tree<Node> = Tree::new();
         tree.add_node(TreeNodeType::Root, || Node { value: 100 });
@@ -448,11 +524,9 @@ mod tests {
             Ok(())
         });
         check!(lastvalue == 200);
-        tree.get_node(0, |node, _| {
-            node.value = 123;
-            Ok(())
-        });
-        check!(lastvalue != 123);
+
+        tree.get_node_mut(0).unwrap().value = 123;
+
         tree.get_node(0, |node, _| {
             lastvalue = node.value;
             Ok(())
@@ -473,7 +547,9 @@ mod tests {
         child = tree.add_node(TreeNodeType::Child(child.unwrap()), || Node { value: 200 });
         check!( let Ok(2) =  child );
 
-        tree.get_node(child.unwrap(), |node, parent_index_in_tree| {
+        let lastchildindex = child.unwrap();
+
+        tree.get_node(lastchildindex, |node, parent_index_in_tree| {
             check!(node.value == 200);
             assert_eq!(
                 parent_index_in_tree,
@@ -482,6 +558,12 @@ mod tests {
             );
             Ok(())
         });
+
+        if let Ok(info) = tree.get_node_info(lastchildindex) {
+            check!(info.0 == 2); // index in tree
+            check!(info.1 == Some(0)); // index in parent
+            check!(info.2 == Some(1)); // parent index in tree
+        };
 
         tree.dump_structure();
     }
@@ -565,6 +647,62 @@ mod tests {
 
         tree.dump_structure();
     }
+    #[test]
+    fn foreach_children() {
+        let mut tree: Tree<Node> = Tree::new();
+        let rootidx = tree.add_node(TreeNodeType::Root, || Node { value: 1 });
+        check!(let Ok(_) = rootidx);
+        let rootidx = rootidx.unwrap();
+
+        // Now add 3 children
+        for n in 1..=5 {
+            check!(let Ok(_) = tree
+            .add_node(TreeNodeType::Child(rootidx), || Node { value: n }));
+        }
+
+        let mut cycle = 1;
+        tree.foreach_children(rootidx, |node, index_in_tree, index_in_parent| {
+            check!(node.value == cycle);
+            check!(index_in_tree == cycle as usize);
+            check!(index_in_parent == cycle as usize - 1usize);
+
+            cycle += 1;
+        });
+
+        check!( let Ok(_) = tree.remove_node(3));
+
+        cycle = 1;
+        tree.foreach_children(rootidx, |node, index_in_tree, index_in_parent| {
+            match cycle {
+                1 => {
+                    check!(node.value == 1);
+                    check!(index_in_tree == 1);
+                    check!(index_in_parent == 0);
+                }
+                2 => {
+                    check!(node.value == 2);
+                    check!(index_in_tree == 2);
+                    check!(index_in_parent == 1);
+                }
+                3 => {
+                    check!(node.value == 5);
+                    check!(index_in_tree == 5);
+                    check!(index_in_parent == 2);
+                }
+                4 => {
+                    check!(node.value == 4);
+                    check!(index_in_tree == 4);
+                    check!(index_in_parent == 3);
+                }
+                _ => panic!("Should not happen"),
+            }
+
+            cycle += 1;
+        });
+
+        tree.dump_structure();        
+    }
+
     #[test]
     fn massive_workload() {
         let mut rng = rand::thread_rng();
