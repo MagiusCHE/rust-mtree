@@ -3,7 +3,9 @@
 use core::fmt;
 use std::{
     borrow::{Borrow, BorrowMut},
-    cell::RefCell, fmt::{Display, Formatter}, error::Error,
+    cell::RefCell,
+    error::Error,
+    fmt::{Display, Formatter},
 };
 
 #[derive(Debug)]
@@ -16,8 +18,8 @@ pub enum TreeError {
     CantRemoveNodeWithChildren,
 }
 
-impl Error for TreeError{
-    fn source(&self) -> Option<&(dyn Error + 'static)>{
+impl Error for TreeError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(self)
     }
 }
@@ -42,7 +44,7 @@ pub struct Tree<T> {
     uid: u64,
     dcb: Option<DCB<T>>,
 }
-/* 
+/*
 impl<T> Display for Tree<T> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self)
@@ -719,7 +721,7 @@ mod tests {
             cycle += 1;
         });
 
-        tree.dump_structure();        
+        tree.dump_structure();
     }
 
     #[test]
