@@ -36,20 +36,23 @@ pub enum DumpCallbackType {
 }
 
 // Declare a type for anonymous function
+
 type DCB<T> = Box<dyn Fn(DumpCallbackType, Option<&T>) -> String>;
 
-pub struct Tree<T> {
+use derivative::{Derivative};
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct Tree<T>
+where
+    T: fmt::Debug,
+{
     elements: Vec<Option<RefCell<NodeRef<T>>>>,
     empties: Vec<usize>,
     uid: u64,
+    #[derivative(Debug="ignore")]
     dcb: Option<DCB<T>>,
 }
-/*
-impl<T> Display for Tree<T> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}*/
 
 #[derive(Debug)]
 struct NodeRef<T> {
