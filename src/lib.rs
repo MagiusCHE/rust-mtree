@@ -39,7 +39,7 @@ pub enum DumpCallbackType {
 
 type DCB<T> = Box<dyn Fn(DumpCallbackType, Option<&T>) -> String>;
 
-use derivative::{Derivative};
+use derivative::Derivative;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -50,7 +50,7 @@ where
     elements: Vec<Option<RefCell<NodeRef<T>>>>,
     empties: Vec<usize>,
     uid: u64,
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug = "ignore")]
     dcb: Option<DCB<T>>,
 }
 
@@ -289,7 +289,7 @@ where
 
     pub fn add_node<F>(&mut self, nodetype: TreeNodeType, mut f: F) -> Result<usize, TreeError>
     where
-        F: Fn() -> T,
+        F: FnMut() -> T,
     {
         let (index_in_tree, index_in_parent, parent_index_in_tree) = match nodetype {
             TreeNodeType::Root => {
@@ -426,9 +426,42 @@ where
         self.get_node_ref(index, |node| f(&mut node.value, node.parent_index_in_tree))
     }
 
-    /// Iterate on children and
+    /// Iterate over all desendats children
+    pub fn trasverse_sorted_children<B, F>(
+        &self,
+        index_in_tree: usize,
+        sort: B,
+        cb: &mut F,
+    ) -> Result<(), TreeError>
+    where
+        B: Fn(&T, &T) -> std::cmp::Ordering,
+        F: FnMut(&mut T, usize, Option<usize>),
+    {
+        let mut returns = Vec::<usize>::new();
+        self.elements.iter().enumerate().for_each(|(idx, noderef)| {
+            if noderef.is_some() {
+                returns.push(idx);
+            }
+        });
+
+        returns.sort_by(|a, b| {
+            let a = self.elements[*a].as_ref().unwrap().borrow();
+            let b = self.elements[*b].as_ref().unwrap().borrow();
+            sort(&a.value, &b.value)
+        });
+
+        for ele in returns {
+            let mut node = self.elements[ele].as_ref().unwrap().borrow_mut();
+            let index_in_parent = node.index_in_parent;
+            cb(&mut node.borrow_mut().value, ele, index_in_parent);
+        }
+
+        Ok(())
+    }
+
+    /// Iterate over children and
     ///  pass index_in_tree, index_in_parent to callback
-    pub fn foreach_children<F>(&self, index_in_tree: usize, mut f: F) -> Result<(), TreeError>
+    pub fn foreach_children<F>(&self, index_in_tree: usize, f: &mut F) -> Result<(), TreeError>
     where
         F: FnMut(&mut T, usize, usize),
     {
@@ -685,7 +718,7 @@ mod tests {
         }
 
         let mut cycle = 1;
-        tree.foreach_children(rootidx, |node, index_in_tree, index_in_parent| {
+        tree.foreach_children(rootidx, &mut |node, index_in_tree, index_in_parent| {
             check!(node.value == cycle);
             check!(index_in_tree == cycle as usize);
             check!(index_in_parent == cycle as usize - 1usize);
@@ -696,7 +729,7 @@ mod tests {
         check!( let Ok(_) = tree.remove_node(3));
 
         cycle = 1;
-        tree.foreach_children(rootidx, |node, index_in_tree, index_in_parent| {
+        tree.foreach_children(rootidx, &mut |node, index_in_tree, index_in_parent| {
             match cycle {
                 1 => {
                     check!(node.value == 1);
@@ -726,7 +759,43 @@ mod tests {
 
         tree.dump_structure();
     }
+    #[test]
+    fn trasverse_sort() {
+        let mut tree: Tree<Node> = Tree::new();
+        let _dcb = |_type: DumpCallbackType, node: Option<&Node>| match _type {
+            DumpCallbackType::Head => return "CTree structure:".to_owned(),
+            DumpCallbackType::Node(index_in_tree, Some(parent_index_in_tree)) => {
+                return format!(
+                    "CNode[{}<^{}={}]",
+                    parent_index_in_tree,
+                    index_in_tree,
+                    node.unwrap().value
+                )
+            }
+            DumpCallbackType::Node(index_in_tree, None) => {
+                return format!("CNode[§<^{}={}]", index_in_tree, node.unwrap().value)
+            }
+        };
 
+        check!(let Ok(_) = tree.add_node(TreeNodeType::Root, || Node { value: 0 }));
+
+        for i in 0..10 {
+            check!(let Ok(_) = tree.add_node(TreeNodeType::Child(0), || Node { value: 10-i }));
+        }
+        print!("Tree unsorted");
+        tree.dump_structure();
+
+        let mut idx: i32 = 0;
+        tree.trasverse_sorted_children(
+            0,
+            |a: &Node, b: &Node| a.value.cmp(&b.value),
+            &mut |node, index_in_tree, _| {
+                println!("Node[{index_in_tree}]={:?}", node);
+                check!(node.value == idx);
+                idx += 1;
+            },
+        );
+    }
     #[test]
     fn massive_workload() {
         let mut rng = rand::thread_rng();
